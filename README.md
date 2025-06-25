@@ -8,3 +8,7 @@
 - test stairs recognition
 - add gps function
 - (thats it for now)
+
+
+### Reference
+- https://www.youtube.com/watch?v=l4QnAPgiD5Q
