@@ -11,4 +11,4 @@
 
 
 ### Reference
-- https://www.youtube.com/watch?v=l4QnAPgiD5Q
+- [GPS module guide](https://www.youtube.com/watch?v=l4QnAPgiD5Q)
