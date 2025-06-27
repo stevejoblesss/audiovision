@@ -9,6 +9,11 @@
 - add gps function
 - (thats it for now)
 
+## Required tools for setting up darknet
+- opencv > 3.9.1
+- CUDA > 11.4, CUDNN > 8.9.4
+- cmake
+- ##### recommended to use wsl or linux instead of windows
 
 ### Reference
 - [GPS module guide](https://www.youtube.com/watch?v=l4QnAPgiD5Q)
