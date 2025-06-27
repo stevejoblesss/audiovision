@@ -9,7 +9,7 @@
 - add gps function
 - (thats it for now)
 
-## Required tools for setting up darknet
+### Required tools for setting up darknet by hank-ai or pjreddie or alexeyab
 - opencv > 3.9.1
 - CUDA > 11.4, CUDNN > 8.9.4
 - cmake
