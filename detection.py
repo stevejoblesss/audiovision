@@ -17,10 +17,10 @@ FOCAL_LENGTH = (REF_OBJECT_PIXEL_WIDTH * KNOWN_DISTANCE) / KNOWN_WIDTH
 MAX_STEPS_TO_ANNOUNCE = 15  # Objects beyond this step count won't be announced
 SIDE_BOUNDARY_PERCENT = 0.33  # Percentage of screen width for left/right detection
 clrTime = 4 # amount of time to clear queue   default:4
-ALLOWED_CLASSES = {"person", "bicycle", "car", "motorbike", "bus", "truck", "traffic light", "fire hydrant", "stop sign", "bench", "dog", "horse", "sheep", "cow", "bear", "suitcase","chair", "sofa", "pottedplant", "bed", "diningtable", "toilet", "sink", "refrigerator", "vase",}  # Add the object classes you want to detect
+ALLOWED_CLASSES = {"stair", "person", "bicycle", "car", "motorbike", "bus", "truck", "traffic light", "fire hydrant", "stop sign", "bench", "dog", "horse", "sheep", "cow", "bear", "suitcase","chair", "sofa", "pottedplant", "bed", "diningtable", "toilet", "sink", "refrigerator", "vase",}  # Add the object classes you want to detect
 
 # Load YOLO
-net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
+net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg", "stairs-yolov3-tiny_6500.weight", "stairs-yolov3-tiny.cfg")
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
@@ -28,9 +28,12 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 with open("coco.names", "r") as f:
     CLASSES = [line.strip() for line in f.readlines()]
 
+with open("stairs.names", "r") as f:
+    CLASSES = [line.strip() for line in f.readlines()]
+
 # Initialize TTS Engine
 tts_engine = pyttsx3.init()
-tts_engine.setProperty('rate', 150)
+tts_engine.setProperty('rate', 125)
 tts_engine.setProperty('volume', 1.0)
 
 speech_queue = queue.Queue()
