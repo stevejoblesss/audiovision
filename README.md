@@ -5,8 +5,9 @@
 
 ## TO DO LIST
 - add drain recognition.
-- test stairs recognition
+- test stairs recognition 🤓
 - add gps function
+- organize this repo
 - (thats it for now)
 
 ### Required tools for setting up darknet by hank-ai or pjreddie or alexeyab
