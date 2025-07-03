@@ -14,6 +14,7 @@
 - opencv > 3.9.1
 - CUDA > 11.4, CUDNN > 8.9.4
 - cmake
+- WSL2 (whatever distro is fine)
 - ##### recommended to use wsl or linux instead of windows
 
 ### Reference
