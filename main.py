@@ -195,12 +195,39 @@ def object_detection_thread():
                     class_ids.append(class_id)
 
         indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.4, 0.3)
+
+        closest_object = None
+        closest_box = None
+        min_steps = float('inf')
+
         if len(indices) > 0:
             for i in indices.flatten():
                 startX, startY, box_width, box_height = boxes[i]
+                class_id = class_ids[i]
                 endX = startX + box_width
                 endY = startY + box_height
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+                distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
+                steps = max(1, int(round(distance / 50)))
+
+                if steps < min_steps:
+                    min_steps = steps
+                    closest_object = CLASSES[class_id]
+                    closest_box = (startX, startY, endX, endY)
+
+        # Draw green box with label
+        cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+        label = f"{CLASSES[class_id]}"
+        cv2.putText(frame, label, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0),2,)
+
+        # Draw red box and speak for closest object
+        if closest_box:
+            print(f"Announcing: {closest_object}")
+            speak(f"{closest_object} ahead in {min_steps} steps")
+            (startX, startY, endX, endY) = closest_box
+            cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
+            label = f"{closest_object}"
+            cv2.putText(frame, label, (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
         # Periodic reminder
         if time.time() - last_periodic_time >= periodic_message_interval:
