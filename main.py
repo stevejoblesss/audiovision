@@ -1,3 +1,5 @@
+# AudioVision Final Version with Full Detection + Delay + Stairs
+
 import os, re, time, json, queue, serial, pynmea2, requests, pyttsx3, vosk, sounddevice as sd, pickle, cv2, numpy as np, threading
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -6,7 +8,7 @@ from google.auth.transport.requests import Request
 CREDENTIALS_FILE = "avis_credentials.json"
 TOKEN_FILE = "token.pkl"
 SCOPES = ["https://www.googleapis.com/auth/mapsplatform.directions"]
-GOOGLE_MAPS_API_KEY = "AIzaSyBPZ3JcOxQtnZZhuPZhYNaB0xXjESAH8Hk"
+GOOGLE_MAPS_API_KEY = "YOUR_API_KEY"
 DESTINATION_HOME = "Komtar, George Town, Penang"
 
 # === TTS ===
@@ -47,9 +49,6 @@ def audio_callback(indata, frames, time_, status):
 
 def listen_command_with_hotword():
     try:
-        # 🔧 Force specific audio input device if needed
-        # sd.default.device = (None, 1)
-
         with sd.RawInputStream(
             samplerate=16000,
             blocksize=8000,
@@ -151,38 +150,45 @@ def object_detection_thread():
     FOCAL_LENGTH = (REF_OBJECT_PIXEL_WIDTH * KNOWN_DISTANCE) / KNOWN_WIDTH
     MAX_STEPS_TO_ANNOUNCE = 15
     SIDE_BOUNDARY_PERCENT = 0.33
+    last_announcement_time = 0
+    announcement_cooldown = 5  # seconds
     periodic_message = "Stay aware of your surroundings."
     periodic_message_interval = 30
     last_periodic_time = time.time()
 
     net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
+    stairs_net = cv2.dnn.readNet(
+        "stairs-yolov3-tiny_6500.weights", "stairs-yolov3-tiny.cfg"
+    )
     CLASSES = open("coco.names").read().strip().split("\n")
+    STAIRS_CLASSES = open("stairs.names").read().strip().split("\n")
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Camera not accessible")
         return
 
+    cv2.namedWindow("AudioVision", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("AudioVision", 960, 720)
+
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("Failed to grab frame")
             break
 
         height, width = frame.shape[:2]
         left_boundary = width * SIDE_BOUNDARY_PERCENT
         right_boundary = width * (1 - SIDE_BOUNDARY_PERCENT)
 
+        # --- General Object Detection ---
         blob = cv2.dnn.blobFromImage(
             frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
         )
         net.setInput(blob)
         detections = net.forward(net.getUnconnectedOutLayersNames())
 
-        boxes, confidences, class_ids = [], [], []
-        closest_object = None
-        closest_box = None
-        min_steps = float("inf")
+        boxes, class_ids = [], []
+        closest_object, closest_box, min_steps = None, None, float("inf")
 
         for detection in detections:
             for obj in detection:
@@ -192,35 +198,33 @@ def object_detection_thread():
                 if confidence > 0.4:
                     box = obj[0:4] * np.array([width, height, width, height])
                     (centerX, centerY, box_width, box_height) = box.astype("int")
-                    startX = int(centerX - (box_width / 2))
-                    startY = int(centerY - (box_height / 2))
+                    startX = int(centerX - box_width / 2)
+                    startY = int(centerY - box_height / 2)
                     endX = startX + box_width
                     endY = startY + box_height
+                    distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
+                    steps = max(1, int(round(distance / 50)))
 
-                    steps = int((KNOWN_WIDTH * FOCAL_LENGTH) / box_width / 50)
-                    if steps < min_steps:
-                        min_steps = steps
-                        closest_object = CLASSES[class_id]
+                    label = f"{CLASSES[class_id]}: {steps} steps ({distance:.2f}cm)"
+                    if steps < min_steps and steps <= MAX_STEPS_TO_ANNOUNCE:
+                        closest_object = label
                         closest_box = (startX, startY, endX, endY)
+                        min_steps = steps
 
-                    boxes.append((startX, startY, endX, endY))
-                    class_ids.append(class_id)
+                    # Draw green box
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+                    cv2.putText(
+                        frame,
+                        label,
+                        (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 0),
+                        2,
+                    )
 
-        for idx, (startX, startY, endX, endY) in enumerate(boxes):
-            label = f"{CLASSES[class_ids[idx]]}"
-            color = (0, 255, 0)
-            cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
-            cv2.putText(
-                frame,
-                label,
-                (startX, startY - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                color,
-                2,
-            )
-
-        if closest_box:
+        # Draw red box for closest
+        if closest_box and time.time() - last_announcement_time > announcement_cooldown:
             (startX, startY, endX, endY) = closest_box
             cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
             cv2.putText(
@@ -233,7 +237,46 @@ def object_detection_thread():
                 2,
             )
             print(f"Announcing: {closest_object}")
-            speak(f"{closest_object} ahead in {min_steps} steps")
+            speak(f"{closest_object}")
+            last_announcement_time = time.time()
+
+        # --- Stairs Detection ---
+        stairs_blob = cv2.dnn.blobFromImage(
+            frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
+        )
+        stairs_net.setInput(stairs_blob)
+        stairs_output = stairs_net.forward(stairs_net.getUnconnectedOutLayersNames())
+
+        for detection in stairs_output:
+            for obj in detection:
+                scores = obj[5:]
+                class_id = np.argmax(scores)
+                confidence = scores[class_id]
+                if confidence > 0.5:
+                    box = obj[0:4] * np.array([width, height, width, height])
+                    (centerX, centerY, box_width, box_height) = box.astype("int")
+                    startX = int(centerX - box_width / 2)
+                    startY = int(centerY - box_height / 2)
+                    endX = startX + box_width
+                    endY = startY + box_height
+                    distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
+                    steps = max(1, int(round(distance / 50)))
+                    label = (
+                        f"{STAIRS_CLASSES[class_id]}: {steps} steps ({distance:.2f}cm)"
+                    )
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (255, 0, 0), 2)
+                    cv2.putText(
+                        frame,
+                        label,
+                        (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 0, 0),
+                        2,
+                    )
+                    if time.time() - last_announcement_time > announcement_cooldown:
+                        speak(label)
+                        last_announcement_time = time.time()
 
         # Periodic reminder
         if time.time() - last_periodic_time >= periodic_message_interval:
