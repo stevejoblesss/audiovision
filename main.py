@@ -1,5 +1,3 @@
-# AudioVision All-in-One Script (with Updated Detection)
-
 import os, re, time, json, queue, serial, pynmea2, requests, pyttsx3, vosk, sounddevice as sd, pickle, cv2, numpy as np, threading
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -48,34 +46,41 @@ def audio_callback(indata, frames, time_, status):
 
 
 def listen_command_with_hotword():
-    with sd.RawInputStream(
-        samplerate=16000,
-        blocksize=8000,
-        dtype="int16",
-        channels=1,
-        callback=audio_callback,
-    ):
-        recognizer = vosk.KaldiRecognizer(model, 16000)
-        while True:
-            print("🎤 Waiting for 'hey avis'...")
+    try:
+        # 🔧 Force specific audio input device if needed
+        # sd.default.device = (None, 1)
+
+        with sd.RawInputStream(
+            samplerate=16000,
+            blocksize=8000,
+            dtype="int16",
+            channels=1,
+            callback=audio_callback,
+        ):
+            recognizer = vosk.KaldiRecognizer(model, 16000)
             while True:
-                data = audio_q.get()
-                if recognizer.AcceptWaveform(data):
-                    result = json.loads(recognizer.Result())
-                    if "hey avis" in result.get("text", "").lower():
-                        speak("Yes, I'm listening.")
-                        break
-            print("🎤 Awaiting command...")
-            start = sd.time()
-            while sd.time() - start < 7:
-                data = audio_q.get()
-                if recognizer.AcceptWaveform(data):
-                    result = json.loads(recognizer.Result())
-                    cmd = result.get("text", "").lower()
-                    if cmd:
-                        print("Command:", cmd)
-                        return cmd
-            speak("I didn't catch that. Please try again.")
+                print("🎤 Waiting for 'hey avis'...")
+                while True:
+                    data = audio_q.get()
+                    if recognizer.AcceptWaveform(data):
+                        result = json.loads(recognizer.Result())
+                        if "hey avis" in result.get("text", "").lower():
+                            speak("Yes, I'm listening.")
+                            break
+                print("🎤 Awaiting command...")
+                start = sd.time()
+                while sd.time() - start < 7:
+                    data = audio_q.get()
+                    if recognizer.AcceptWaveform(data):
+                        result = json.loads(recognizer.Result())
+                        cmd = result.get("text", "").lower()
+                        if cmd:
+                            print("Command:", cmd)
+                            return cmd
+                speak("I didn't catch that. Please try again.")
+    except Exception as e:
+        print("Microphone error:", e)
+        speak("Microphone not available.")
 
 
 # === GPS / Maps ===
@@ -138,7 +143,7 @@ def search_place_nearby(lat, lon, keyword):
     return results[0]["vicinity"] if results else None
 
 
-# === Vision Detection ===
+# === Object Detection ===
 def object_detection_thread():
     KNOWN_WIDTH = 55
     KNOWN_DISTANCE = 130
@@ -151,11 +156,7 @@ def object_detection_thread():
     last_periodic_time = time.time()
 
     net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
-    stairs_net = cv2.dnn.readNet(
-        "stairs-yolov3-tiny_6500.weights", "stairs-yolov3-tiny.cfg"
-    )
     CLASSES = open("coco.names").read().strip().split("\n")
-    STAIRS_CLASSES = open("stairs.names").read().strip().split("\n")
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -172,7 +173,6 @@ def object_detection_thread():
         left_boundary = width * SIDE_BOUNDARY_PERCENT
         right_boundary = width * (1 - SIDE_BOUNDARY_PERCENT)
 
-        # General YOLO detection
         blob = cv2.dnn.blobFromImage(
             frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
         )
@@ -180,6 +180,10 @@ def object_detection_thread():
         detections = net.forward(net.getUnconnectedOutLayersNames())
 
         boxes, confidences, class_ids = [], [], []
+        closest_object = None
+        closest_box = None
+        min_steps = float("inf")
+
         for detection in detections:
             for obj in detection:
                 scores = obj[5:]
@@ -190,44 +194,46 @@ def object_detection_thread():
                     (centerX, centerY, box_width, box_height) = box.astype("int")
                     startX = int(centerX - (box_width / 2))
                     startY = int(centerY - (box_height / 2))
-                    boxes.append([startX, startY, box_width, box_height])
-                    confidences.append(float(confidence))
+                    endX = startX + box_width
+                    endY = startY + box_height
+
+                    steps = int((KNOWN_WIDTH * FOCAL_LENGTH) / box_width / 50)
+                    if steps < min_steps:
+                        min_steps = steps
+                        closest_object = CLASSES[class_id]
+                        closest_box = (startX, startY, endX, endY)
+
+                    boxes.append((startX, startY, endX, endY))
                     class_ids.append(class_id)
 
-        indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.4, 0.3)
+        for idx, (startX, startY, endX, endY) in enumerate(boxes):
+            label = f"{CLASSES[class_ids[idx]]}"
+            color = (0, 255, 0)
+            cv2.rectangle(frame, (startX, startY), (endX, endY), color, 2)
+            cv2.putText(
+                frame,
+                label,
+                (startX, startY - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                2,
+            )
 
-        closest_object = None
-        closest_box = None
-        min_steps = float('inf')
-
-        if len(indices) > 0:
-            for i in indices.flatten():
-                startX, startY, box_width, box_height = boxes[i]
-                class_id = class_ids[i]
-                endX = startX + box_width
-                endY = startY + box_height
-                distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
-                steps = max(1, int(round(distance / 50)))
-
-                if steps < min_steps:
-                    min_steps = steps
-                    closest_object = CLASSES[class_id]
-                    closest_box = (startX, startY, endX, endY)
-
-        # Draw green box with label
-        cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
-        label = f"{CLASSES[class_id]}"
-        cv2.putText(frame, label, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0),2,)
-
-        # Draw red box and speak for closest object
         if closest_box:
-            print(f"Announcing: {closest_object}")
-            speak(f"{closest_object} ahead in {min_steps} steps")
             (startX, startY, endX, endY) = closest_box
             cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
-            label = f"{closest_object}"
-            cv2.putText(frame, label, (startX, startY - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            cv2.putText(
+                frame,
+                closest_object,
+                (startX, startY - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                2,
+            )
+            print(f"Announcing: {closest_object}")
+            speak(f"{closest_object} ahead in {min_steps} steps")
 
         # Periodic reminder
         if time.time() - last_periodic_time >= periodic_message_interval:
@@ -248,6 +254,8 @@ def main():
     threading.Thread(target=object_detection_thread, daemon=True).start()
     while True:
         cmd = listen_command_with_hotword()
+        if not cmd:
+            continue
         if "take me home" in cmd or "go home" in cmd:
             speak("Planning route to home.")
             lat, lon = get_gps_location()
