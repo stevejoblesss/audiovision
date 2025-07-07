@@ -1,4 +1,4 @@
-# AudioVision All-in-One Script (Modular Functions, Single File)
+# AudioVision All-in-One Script (with Updated Detection)
 
 import os, re, time, json, queue, serial, pynmea2, requests, pyttsx3, vosk, sounddevice as sd, pickle, cv2, numpy as np, threading
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -12,17 +12,31 @@ GOOGLE_MAPS_API_KEY = "AIzaSyBPZ3JcOxQtnZZhuPZhYNaB0xXjESAH8Hk"
 DESTINATION_HOME = "Komtar, George Town, Penang"
 
 # === TTS ===
-tts = pyttsx3.init()
-tts.setProperty("rate", 125)
+tts_engine = pyttsx3.init()
+tts_engine.setProperty("rate", 125)
+tts_engine.setProperty("volume", 1.0)
+speech_queue = queue.Queue()
+queue_clear_time = time.time()
+
+
+def speak_worker():
+    while True:
+        text = speech_queue.get()
+        if text is None:
+            break
+        tts_engine.say(text)
+        tts_engine.runAndWait()
+        speech_queue.task_done()
+
+
+threading.Thread(target=speak_worker, daemon=True).start()
 
 
 def speak(text):
-    print("🗣️", text)
-    tts.say(text)
-    tts.runAndWait()
+    speech_queue.put(text)
 
 
-# === VOSK VOICE ===
+# === VOSK ===
 model = vosk.Model("vosk-model-small-en-us-0.15")
 audio_q = queue.Queue()
 
@@ -52,20 +66,19 @@ def listen_command_with_hotword():
                         speak("Yes, I'm listening.")
                         break
             print("🎤 Awaiting command...")
-            command = ""
             start = sd.time()
             while sd.time() - start < 7:
                 data = audio_q.get()
                 if recognizer.AcceptWaveform(data):
                     result = json.loads(recognizer.Result())
-                    command = result.get("text", "").lower()
-                    if command:
-                        print("Command:", command)
-                        return command
+                    cmd = result.get("text", "").lower()
+                    if cmd:
+                        print("Command:", cmd)
+                        return cmd
             speak("I didn't catch that. Please try again.")
 
 
-# === GPS ===
+# === GPS / Maps ===
 def get_gps_location():
     gps = serial.Serial("/dev/ttyUSB0", baudrate=9600, timeout=1)
     while True:
@@ -80,7 +93,6 @@ def get_gps_location():
         time.sleep(0.5)
 
 
-# === GOOGLE MAPS ===
 def authenticate_google():
     creds = None
     if os.path.exists(TOKEN_FILE):
@@ -126,99 +138,82 @@ def search_place_nearby(lat, lon, keyword):
     return results[0]["vicinity"] if results else None
 
 
-# === OBJECT & STAIRS DETECTION ===
+# === Vision Detection ===
 def object_detection_thread():
-    cv2.namedWindow("AudioVision Demo", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("AudioVision Demo", 960, 720)
-    cv2.namedWindow("AudioVision Demo", cv2.WINDOW_NORMAL)
+    KNOWN_WIDTH = 55
+    KNOWN_DISTANCE = 130
+    REF_OBJECT_PIXEL_WIDTH = 325
+    FOCAL_LENGTH = (REF_OBJECT_PIXEL_WIDTH * KNOWN_DISTANCE) / KNOWN_WIDTH
+    MAX_STEPS_TO_ANNOUNCE = 15
+    SIDE_BOUNDARY_PERCENT = 0.33
+    periodic_message = "Stay aware of your surroundings."
+    periodic_message_interval = 30
+    last_periodic_time = time.time()
+
     net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
     stairs_net = cv2.dnn.readNet(
         "stairs-yolov3-tiny_6500.weights", "stairs-yolov3-tiny.cfg"
     )
     CLASSES = open("coco.names").read().strip().split("\n")
     STAIRS_CLASSES = open("stairs.names").read().strip().split("\n")
-    ALLOWED_CLASSES = {"person", "car", "bus", "chair", "sofa"}
-    FOCAL_LENGTH = (325 * 130) / 55
+
     cap = cv2.VideoCapture(0)
-    last_time = 0
+    if not cap.isOpened():
+        print("Camera not accessible")
+        return
 
     while True:
         ret, frame = cap.read()
         if not ret:
+            print("Failed to grab frame")
             break
+
         height, width = frame.shape[:2]
+        left_boundary = width * SIDE_BOUNDARY_PERCENT
+        right_boundary = width * (1 - SIDE_BOUNDARY_PERCENT)
+
+        # General YOLO detection
         blob = cv2.dnn.blobFromImage(
             frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
         )
-
-        # General Object
         net.setInput(blob)
         detections = net.forward(net.getUnconnectedOutLayersNames())
-        closest_label = None
-        closest_box = None
-        min_steps = float("inf")
+
+        boxes, confidences, class_ids = [], [], []
         for detection in detections:
             for obj in detection:
                 scores = obj[5:]
                 class_id = np.argmax(scores)
                 confidence = scores[class_id]
-                if confidence > 0.5 and CLASSES[class_id] in ALLOWED_CLASSES:
+                if confidence > 0.4:
                     box = obj[0:4] * np.array([width, height, width, height])
-                    (centerX, centerY, box_w, box_h) = box.astype("int")
-                    startX = int(centerX - (box_w / 2))
-                    startY = int(centerY - (box_h / 2))
-                    endX = startX + box_w
-                    endY = startY + box_h
-                    steps = int((55 * FOCAL_LENGTH) / box_w / 50)
-                    label = f"{CLASSES[class_id]} ({steps} steps)"
-                    if steps < min_steps:
-                        closest_label = CLASSES[class_id]
-                        closest_box = (startX, startY, endX, endY)
-                        min_steps = steps
-                    # Default green boxes
-                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
-                    cv2.putText(
-                        frame,
-                        label,
-                        (startX, startY - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        2,
-                    )
+                    (centerX, centerY, box_width, box_height) = box.astype("int")
+                    startX = int(centerX - (box_width / 2))
+                    startY = int(centerY - (box_height / 2))
+                    boxes.append([startX, startY, box_width, box_height])
+                    confidences.append(float(confidence))
+                    class_ids.append(class_id)
 
-        # Highlight closest object in red
-        if closest_box and time.time() - last_time > 5:
-            (startX, startY, endX, endY) = closest_box
-            cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
-            speak(f"{closest_label} ahead in {min_steps} steps")
-            print(f"Announcing: {closest_label}")
-            last_time = time.time()
+        indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.4, 0.3)
+        if len(indices) > 0:
+            for i in indices.flatten():
+                startX, startY, box_width, box_height = boxes[i]
+                endX = startX + box_width
+                endY = startY + box_height
+                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
 
-        # Stairs
-        stairs_blob = cv2.dnn.blobFromImage(
-            frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
-        )
-        stairs_net.setInput(stairs_blob)
-        stairs_output = stairs_net.forward(stairs_net.getUnconnectedOutLayersNames())
-        for detection in stairs_output:
-            for obj in detection:
-                scores = obj[5:]
-                class_id = np.argmax(scores)
-                confidence = scores[class_id]
-                if confidence > 0.5:
-                    box = obj[0:4] * np.array([width, height, width, height])
-                    (_, _, box_w, _) = box.astype("int")
-                    steps = int((55 * FOCAL_LENGTH) / box_w / 50)
-                    if steps < 15 and time.time() - last_time > 5:
-                        speak(f"{STAIRS_CLASSES[class_id]} ahead in {steps} steps")
-                        last_time = time.time()
+        # Periodic reminder
+        if time.time() - last_periodic_time >= periodic_message_interval:
+            speak(periodic_message)
+            last_periodic_time = time.time()
 
-                        cv2.imshow("AudioVision Demo", frame)
+        cv2.imshow("AudioVision", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
+
     cap.release()
     cv2.destroyAllWindows()
+    speech_queue.put(None)
 
 
 # === MAIN ===
