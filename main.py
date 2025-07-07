@@ -129,6 +129,8 @@ def search_place_nearby(lat, lon, keyword):
 # === OBJECT & STAIRS DETECTION ===
 def object_detection_thread():
     cv2.namedWindow("AudioVision Demo", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("AudioVision Demo", 960, 720)
+    cv2.namedWindow("AudioVision Demo", cv2.WINDOW_NORMAL)
     net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
     stairs_net = cv2.dnn.readNet(
         "stairs-yolov3-tiny_6500.weights", "stairs-yolov3-tiny.cfg"
@@ -152,6 +154,9 @@ def object_detection_thread():
         # General Object
         net.setInput(blob)
         detections = net.forward(net.getUnconnectedOutLayersNames())
+        closest_label = None
+        closest_box = None
+        min_steps = float("inf")
         for detection in detections:
             for obj in detection:
                 scores = obj[5:]
@@ -159,11 +164,36 @@ def object_detection_thread():
                 confidence = scores[class_id]
                 if confidence > 0.5 and CLASSES[class_id] in ALLOWED_CLASSES:
                     box = obj[0:4] * np.array([width, height, width, height])
-                    (_, _, box_w, _) = box.astype("int")
+                    (centerX, centerY, box_w, box_h) = box.astype("int")
+                    startX = int(centerX - (box_w / 2))
+                    startY = int(centerY - (box_h / 2))
+                    endX = startX + box_w
+                    endY = startY + box_h
                     steps = int((55 * FOCAL_LENGTH) / box_w / 50)
-                    if steps < 15 and time.time() - last_time > 5:
-                        speak(f"{CLASSES[class_id]} ahead in {steps} steps")
-                        last_time = time.time()
+                    label = f"{CLASSES[class_id]} ({steps} steps)"
+                    if steps < min_steps:
+                        closest_label = CLASSES[class_id]
+                        closest_box = (startX, startY, endX, endY)
+                        min_steps = steps
+                    # Default green boxes
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+                    cv2.putText(
+                        frame,
+                        label,
+                        (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 0),
+                        2,
+                    )
+
+        # Highlight closest object in red
+        if closest_box and time.time() - last_time > 5:
+            (startX, startY, endX, endY) = closest_box
+            cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
+            speak(f"{closest_label} ahead in {min_steps} steps")
+            print(f"Announcing: {closest_label}")
+            last_time = time.time()
 
         # Stairs
         stairs_blob = cv2.dnn.blobFromImage(
@@ -184,7 +214,7 @@ def object_detection_thread():
                         speak(f"{STAIRS_CLASSES[class_id]} ahead in {steps} steps")
                         last_time = time.time()
 
-                cv2.imshow("AudioVision Demo", frame)
+                        cv2.imshow("AudioVision Demo", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
     cap.release()
