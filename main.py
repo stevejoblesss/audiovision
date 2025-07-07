@@ -128,6 +128,7 @@ def search_place_nearby(lat, lon, keyword):
 
 # === OBJECT & STAIRS DETECTION ===
 def object_detection_thread():
+    cv2.namedWindow("AudioVision Demo", cv2.WINDOW_NORMAL)
     net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
     stairs_net = cv2.dnn.readNet(
         "stairs-yolov3-tiny_6500.weights", "stairs-yolov3-tiny.cfg"
@@ -183,6 +184,7 @@ def object_detection_thread():
                         speak(f"{STAIRS_CLASSES[class_id]} ahead in {steps} steps")
                         last_time = time.time()
 
+                cv2.imshow("AudioVision Demo", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
     cap.release()
