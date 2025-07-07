@@ -212,30 +212,16 @@ def object_detection_thread():
                         min_steps = steps
 
                     # Draw green box
-                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
-                    cv2.putText(
-                        frame,
-                        label,
-                        (startX, startY - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        2,
-                    )
+                    if (startX, startY, endX, endY) != closest_box:
+                        cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+                        cv2.putText(frame, label, (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         # Draw red box for closest
         if closest_box and time.time() - last_announcement_time > announcement_cooldown:
             (startX, startY, endX, endY) = closest_box
             cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
-            cv2.putText(
-                frame,
-                closest_object,
-                (startX, startY - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                2,
-            )
+            cv2.putText(frame, closest_object, (startX, startY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2,)
             print(f"Announcing: {closest_object}")
             speak(f"{closest_object}")
             last_announcement_time = time.time()
