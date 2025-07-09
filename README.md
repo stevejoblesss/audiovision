@@ -21,3 +21,4 @@
 - [GPS module guide](https://www.youtube.com/watch?v=l4QnAPgiD5Q)
 
 i hate this shit
+https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=456341992454-tlj16na2vle956vakhi4ol4lpskc57kp.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A51499%2F&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fmapsplatform.directions&state=DfSQXoL121aBhofN9nQSCNPooQZh3H&access_type=offline
