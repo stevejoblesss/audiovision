@@ -11,7 +11,7 @@ import requests
 import openrouteservice
 
 # === CONFIG ===
-ORS_API_KEY = "YOUR_ORS_API_KEY"
+ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjRlZDhhMjFmNTk5YjQxNmE4OTdlZjA2YTNjMTBhZWEyIiwiaCI6Im11cm11cjY0In0="
 DESTINATION_HOME = "Komtar, George Town, Penang"
 
 # === TTS ===
