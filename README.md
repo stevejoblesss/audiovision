@@ -5,6 +5,7 @@
 
 ## TO DO LIST
 - ~~add drain recognition.~~
+- hot word trigger ("hey avis")
 - test stairs recognition 🤓
 - add gps function
 - organize this repo
