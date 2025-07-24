@@ -100,7 +100,7 @@ def listen_for_hotword():
             try:
                 audio = r.listen(source, timeout=5)
                 phrase = r.recognize_google(audio).lower()
-                if "hey avis" in phrase:
+                if "hey avis" in phrase:     # hot word part
                     speak("Yes, I'm listening.")
                     return listen_for_command(r, source)
             except sr.WaitTimeoutError:
