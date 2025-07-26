@@ -12,7 +12,7 @@ import openrouteservice
 
 # === CONFIG ===
 ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjRlZDhhMjFmNTk5YjQxNmE4OTdlZjA2YTNjMTBhZWEyIiwiaCI6Im11cm11cjY0In0="
-DESTINATION_HOME = "Komtar, George Town, Penang"
+DESTINATION_HOME = ("Chung Ling Private High School, Lrg Kg Baru, 11400 Ayer Itam, Pulau Pinang")
 
 # === TTS ===
 tts_engine = pyttsx3.init()
