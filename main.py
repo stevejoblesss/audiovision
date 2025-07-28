@@ -185,6 +185,7 @@ def object_detection_thread():
                         2,
                     )
 
+        # Announce closest object
         if closest_box and time.time() - last_announcement_time > cooldown:
             (startX, startY, endX, endY) = closest_box
             cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
@@ -199,6 +200,43 @@ def object_detection_thread():
             )
             speak(closest_object)
             last_announcement_time = time.time()
+
+        # --- STAIRS DETECTION ---
+        stairs_blob = cv2.dnn.blobFromImage(
+            frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
+        )
+        stairs_net.setInput(stairs_blob)
+        stairs_detections = stairs_net.forward(
+            stairs_net.getUnconnectedOutLayersNames()
+        )
+        for detection in stairs_detections:
+            for obj in detection:
+                scores = obj[5:]
+                class_id = np.argmax(scores)
+                confidence = scores[class_id]
+                if confidence > 0.4:
+                    box = obj[0:4] * np.array([width, height, width, height])
+                    (centerX, centerY, box_width, box_height) = box.astype("int")
+                    startX = int(centerX - box_width / 2)
+                    startY = int(centerY - box_height / 2)
+                    endX = startX + box_width
+                    endY = startY + box_height
+                    distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
+                    steps = max(1, int(round(distance / 50)))
+                    label = f"{STAIRS_CLASSES[class_id]}: {steps} steps"
+                    if time.time() - last_announcement_time > cooldown:
+                        speak(label)
+                        last_announcement_time = time.time()
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (255, 0, 0), 2)
+                    cv2.putText(
+                        frame,
+                        label,
+                        (startX, startY - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 0, 0),
+                        2,
+                    )
 
         cv2.imshow("AudioVision", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -218,18 +256,25 @@ def main():
             if "take me home" in cmd:
                 speak("Planning route to home.")
                 lat, lon = get_gps_location()
+                print("Current lat/lon:", lat, lon)
                 steps = get_directions(lat, lon, DESTINATION_HOME)
                 for i, step in enumerate(steps):
                     speak(f"Step {i+1}: {step['instruction']}")
+
             elif "where am i" in cmd:
                 lat, lon = get_gps_location()
+                print("Current lat/lon:", lat, lon)
                 speak(f"You are near {get_address(lat, lon)}")
+
             elif "nearest clinic" in cmd:
                 lat, lon = get_gps_location()
+                print("Current lat/lon:", lat, lon)
                 place = search_place_nearby(lat, lon, "clinic")
                 speak(f"Nearest clinic is at {place}" if place else "Clinic not found")
+                
             else:
-                speak("Command not recognized.")
+                print("Command not recognised")
+                speak("Command not recognised")
 
 
 if __name__ == "__main__":
