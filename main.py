@@ -40,7 +40,7 @@ def speak(text):
 
 # === GPS ===
 def get_gps_location():
-    gps = serial.Serial("/dev/ttyUSB0", baudrate=9600, timeout=1)
+    gps = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=1)
     while True:
         try:
             line = gps.readline().decode("ascii", errors="replace")
