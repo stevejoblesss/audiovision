@@ -223,10 +223,21 @@ def object_detection_thread():
                     endY = startY + box_height
                     distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
                     steps = max(1, int(round(distance / 50)))
-                    label = f"{STAIRS_CLASSES[class_id]}: {steps} steps"
+
+                    # object is at left, center or right
+                    if centerX < width / 3:
+                        side = "left"
+                    elif centerX > 2 * width / 3:
+                        side = "right"
+                    else:
+                        side = "center"
+
+                    label = f"{STAIRS_CLASSES[class_id]}: {steps} steps {side}"
+
                     if time.time() - last_announcement_time > cooldown:
                         speak(label)
                         last_announcement_time = time.time()
+                        
                     cv2.rectangle(frame, (startX, startY), (endX, endY), (255, 0, 0), 2)
                     cv2.putText(
                         frame,
