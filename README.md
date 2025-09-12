@@ -12,9 +12,9 @@
 - add gps function 🤓
 - organize this repo (nah aint happening)
 =======
-- hot word trigger ("hey avis") (speech_recognition)
+- hot word trigger ("hey avis") (speech_recognition) 🤓
 - test stairs recognition 🤓 (opencv, yolov3-tiny)
-- add gps function (open route service)
+- add gps function (open route service) 🤓
 - organize this repo
 >>>>>>> 6393e44ae66e8abdb1ad4ebe78fba74126117f4d
 - (thats it for now)
