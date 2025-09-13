@@ -11,8 +11,10 @@ import requests
 import openrouteservice
 
 # === CONFIG ===
-ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjRlZDhhMjFmNTk5YjQxNmE4OTdlZjA2YTNjMTBhZWEyIiwiaCI6Im11cm11cjY0In0="
-DESTINATION_HOME = ("Chung Ling Private High School, Lrg Kg Baru, 11400 Ayer Itam, Pulau Pinang")
+ORS_API_KEY = "your_ors_api_key"
+DESTINATION_HOME = (
+    "Chung Ling Private High School, Lrg Kg Baru, 11400 Ayer Itam, Pulau Pinang"
+)
 
 # === TTS ===
 tts_engine = pyttsx3.init()
@@ -100,7 +102,7 @@ def listen_for_hotword():
             try:
                 audio = r.listen(source, timeout=5)
                 phrase = r.recognize_google(audio).lower()
-                if "hey avis" in phrase:     # hot word part
+                if "hey avis" in phrase:
                     speak("Yes, I'm listening.")
                     return listen_for_command(r, source)
             except sr.WaitTimeoutError:
@@ -121,7 +123,7 @@ def listen_for_command(r, source):
         return None
 
 
-# === Object Detection (with stairs) ===
+# === STAIRS DETECTION ONLY ===
 def object_detection_thread():
     KNOWN_WIDTH = 55
     KNOWN_DISTANCE = 130
@@ -130,11 +132,9 @@ def object_detection_thread():
     last_announcement_time = 0
     cooldown = 5
 
-    net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
     stairs_net = cv2.dnn.readNet(
         "stairs-yolov3-tiny_6500.weights", "stairs-yolov3-tiny.cfg"
     )
-    CLASSES = open("coco.names").read().strip().split("\n")
     STAIRS_CLASSES = open("stairs.names").read().strip().split("\n")
 
     cap = cv2.VideoCapture(0)
@@ -147,61 +147,8 @@ def object_detection_thread():
             break
 
         height, width = frame.shape[:2]
-        blob = cv2.dnn.blobFromImage(
-            frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
-        )
-        net.setInput(blob)
-        detections = net.forward(net.getUnconnectedOutLayersNames())
 
-        closest_object, closest_box, min_steps = None, None, float("inf")
-
-        for detection in detections:
-            for obj in detection:
-                scores = obj[5:]
-                class_id = np.argmax(scores)
-                confidence = scores[class_id]
-                if confidence > 0.4:
-                    box = obj[0:4] * np.array([width, height, width, height])
-                    (centerX, centerY, box_width, box_height) = box.astype("int")
-                    startX = int(centerX - box_width / 2)
-                    startY = int(centerY - box_height / 2)
-                    endX = startX + box_width
-                    endY = startY + box_height
-                    distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
-                    steps = max(1, int(round(distance / 50)))
-                    label = f"{CLASSES[class_id]}: {steps} steps"
-                    if steps < min_steps:
-                        closest_object = label
-                        closest_box = (startX, startY, endX, endY)
-                        min_steps = steps
-                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
-                    cv2.putText(
-                        frame,
-                        label,
-                        (startX, startY - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        2,
-                    )
-
-        # Announce closest object
-        if closest_box and time.time() - last_announcement_time > cooldown:
-            (startX, startY, endX, endY) = closest_box
-            cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
-            cv2.putText(
-                frame,
-                closest_object,
-                (startX, startY - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                2,
-            )
-            speak(closest_object)
-            last_announcement_time = time.time()
-
-        # --- STAIRS DETECTION ---
+        # Stairs Detection
         stairs_blob = cv2.dnn.blobFromImage(
             frame, 1 / 255.0, (256, 256), swapRB=True, crop=False
         )
@@ -224,7 +171,6 @@ def object_detection_thread():
                     distance = (KNOWN_WIDTH * FOCAL_LENGTH) / box_width
                     steps = max(1, int(round(distance / 50)))
 
-                    # object is at left, center or right
                     if centerX < width / 3:
                         side = "left"
                     elif centerX > 2 * width / 3:
@@ -237,7 +183,7 @@ def object_detection_thread():
                     if time.time() - last_announcement_time > cooldown:
                         speak(label)
                         last_announcement_time = time.time()
-                        
+
                     cv2.rectangle(frame, (startX, startY), (endX, endY), (255, 0, 0), 2)
                     cv2.putText(
                         frame,
@@ -282,7 +228,7 @@ def main():
                 print("Current lat/lon:", lat, lon)
                 place = search_place_nearby(lat, lon, "clinic")
                 speak(f"Nearest clinic is at {place}" if place else "Clinic not found")
-                
+
             else:
                 print("Command not recognised")
                 speak("Command not recognised")
