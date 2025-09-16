@@ -14,10 +14,11 @@
 =======
 - hot word trigger ("hey avis") (speech_recognition) 🤓
 - test stairs recognition 🤓 (opencv, yolov3-tiny)
-- add gps function (open route service) 🤓
 - organize this repo
 >>>>>>> 6393e44ae66e8abdb1ad4ebe78fba74126117f4d
-- (thats it for now)
+- fix open source map or try openstreetmap
+- add text message alert thingi (thru email)
+- add air tag slot or make our own 
 
 ### Required tools for setting up darknet by hank-ai or pjreddie or alexeyab
 
